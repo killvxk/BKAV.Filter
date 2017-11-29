@@ -4,10 +4,9 @@
 
 PFLT_FILTER MiniFilterHandle = NULL;
 FLT_PREOP_CALLBACK_STATUS MiniPreCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID *CompletionContex);
-FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID *CompletionContex, FLT_POST_OPERATION_FLAGS Flags);
+FLT_POSTOP_CALLBACK_STATUS MiniPostCreate ( PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID CompletionContext, FLT_POST_OPERATION_FLAGS Flags);
 FLT_PREOP_CALLBACK_STATUS MiniPreWrite(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID* CompletionContex);
 NTSTATUS MiniUnload(FLT_FILTER_UNLOAD_FLAGS Flags);
-
 
 FLT_PREOP_CALLBACK_STATUS MiniPreCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID *CompletionContex) {
 	PFLT_FILE_NAME_INFORMATION FileNameInfor;
@@ -35,8 +34,13 @@ FLT_PREOP_CALLBACK_STATUS MiniPreCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_O
 
 }
 
-FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects,
-											PVOID *CompletionContex, FLT_POST_OPERATION_FLAGS Flags) {
+FLT_POSTOP_CALLBACK_STATUS MiniPostCreate
+(
+	 PFLT_CALLBACK_DATA Data,
+	 PCFLT_RELATED_OBJECTS FltObjects,
+	 PVOID CompletionContext,
+	 FLT_POST_OPERATION_FLAGS Flags
+) {
 	DbgPrint("Test MiniPostCreate Callback!!\n");
 	return FLT_POSTOP_FINISHED_PROCESSING;
 
@@ -45,21 +49,23 @@ FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data, PCFLT_RELATED_
 FLT_PREOP_CALLBACK_STATUS MiniPreWrite(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID* CompletionContex) {
 	PFLT_FILE_NAME_INFORMATION FileNameInfor;
 	NTSTATUS status;
-	WCHAR Name[100] = { 0 }; // try block .doc Extension;
+	WCHAR Name[300] = { 0 }; // try block .doc Extension;
 
 	if (FltObjects->FileObject != NULL) {
 		status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &FileNameInfor);
 		if (NT_SUCCESS(status)) {
 			status = FltParseFileNameInformation(FileNameInfor);
 			if (NT_SUCCESS(status)) {
-				RtlCopyMemory(Name, FileNameInfor->Name.Buffer, FileNameInfor->Name.MaximumLength);// bat tat ca doc*;
-				_wcsupr(Name);
-				if (wcsstr(Name, L"KHAI.TXT") != NULL) {
-					DbgPrint("File name %ws bi block!\n", Name);
-					Data->IoStatus.Status = STATUS_INVALID_PARAMETER;
-					Data->IoStatus.Information = 0; // con tro toi thong tin vung loi
-					FltReleaseFileNameInformation(FileNameInfor);
-					return FLT_PREOP_COMPLETE;
+				if (wcslen(FileNameInfor->Name.MaximumLength) < 150) {
+					RtlCopyMemory(Name, FileNameInfor->Name.Buffer, FileNameInfor->Name.MaximumLength);// bat tat ca doc*;
+					_wcsupr(Name);
+					if (wcsstr(Name, L"KHAI.TXT") != NULL) {
+						DbgPrint("File name %ws bi block!\n", Name);
+						Data->IoStatus.Status = STATUS_INVALID_PARAMETER;
+						Data->IoStatus.Information = 0; // con tro toi thong tin vung loi
+						FltReleaseFileNameInformation(FileNameInfor);
+						return FLT_PREOP_COMPLETE;
+					}
 				}
 			}
 			FltReleaseFileNameInformation(FileNameInfor);
@@ -75,8 +81,8 @@ NTSTATUS MiniUnload(FLT_FILTER_UNLOAD_FLAGS Flags) {
 }
 
 const FLT_OPERATION_REGISTRATION Callbacks[] = { 
-										{ IRP_MJ_CREATE, 0, MiniPreCreate, NULL },
-										{ IRP_MJ_WRITE, 0, MiniPreWrite, NULL, NULL },
+										{ IRP_MJ_CREATE, 0, MiniPreCreate, MiniPostCreate },
+										{ IRP_MJ_WRITE, 0, MiniPreWrite, NULL },
 											{IRP_MJ_OPERATION_END}
 										};
 const FLT_REGISTRATION FilterRegistration = { sizeof(FLT_REGISTRATION),
