@@ -4,69 +4,39 @@
 
 PFLT_FILTER MiniFilterHandle = NULL;
 FLT_PREOP_CALLBACK_STATUS MiniPreCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID *CompletionContex);
-FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID *CompletionContex);
+FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID *CompletionContex, FLT_POST_OPERATION_FLAGS Flags);
 FLT_PREOP_CALLBACK_STATUS MiniPreWrite(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID* CompletionContex);
 NTSTATUS MiniUnload(FLT_FILTER_UNLOAD_FLAGS Flags);
 
 
-FLT_PREOP_CALLBACK_STATUS MiniPreCreate(PFLT_CALLBACK_DATA Data,
-	PCFLT_RELATED_OBJECTS FltObjects,
-	PVOID *CompletionContex) {
+FLT_PREOP_CALLBACK_STATUS MiniPreCreate(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID *CompletionContex) {
 	PFLT_FILE_NAME_INFORMATION FileNameInfor;
-	NTSTATUS status = STATUS_SUCCESS;
+	NTSTATUS status;
+	WCHAR *Name;
 
-	status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &FileNameInfor);
-	status = FltParseFileNameInformation(FileNameInfor);
-
-	/// FileNameInfor->Name.Buffer // se in ra toan bo o dia
-	// Them chuc nang dua ra duong link tren user
-
-	PUNICODE_STRING pFullPath;
-	UNICODE_STRING volumeName;
-
-	volumeName.Buffer = NULL;
-
-	// khoi tao chuoi
-	RtlInitUnicodeString(pFullPath, NULL);
-
-	// thuực hiện chức năng nối chuổi 
-	if (NT_SUCCESS(status)) {
-		PDEVICE_OBJECT pDeviceDisk = NULL;
-		status = FltGetDiskDeviceObject(FltObjects->Volume, &pDeviceDisk);
+	if (FltObjects->FileObject != NULL) {
+		status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &FileNameInfor);
 		if (NT_SUCCESS(status)) {
-			status = IoVolumeDeviceToDosName(pDeviceDisk, &volumeName);
+			DbgPrint("print before FltParseFileNameInformation: %wz \r\n", FileNameInfor->Name.Buffer);
+			status = FltParseFileNameInformation(FileNameInfor);
+			DbgPrint("Test for FileNameInfor->Nam : %wZ \r\n", FileNameInfor->NamesParsed);
+
 			if (NT_SUCCESS(status)) {
-				// thuc hien ghep chuoi
-				pFullPath->MaximumLength = volumeName.Length + FileNameInfor->Name.Length + sizeof(UNICODE_NULL);
-				pFullPath->Buffer = ExAllocatePoolWithTag(NonPagedPool, pFullPath->MaximumLength, 'KHAI');
-				status = RtlAppendUnicodeStringToString(pFullPath, &volumeName);
-				if (NT_SUCCESS(status)) {
-					status = RtlAppendUnicodeStringToString(pFullPath, &FileNameInfor->ParentDir);
-					if (NT_SUCCESS(status)) {
-						status = RtlAppendUnicodeStringToString(pFullPath, &FileNameInfor->Name);
-						DbgPrint("Duong dan file : %ws\n", pFullPath->Buffer);
-
-					}
-
-				}
-
-				ExFreePoolWithTag(pFullPath->Buffer, 'KHAI');
+				Name = (WCHAR*)ExAllocatePoolWithTag(NonPagedPool, FileNameInfor->Name.MaximumLength, '002A');
+				RtlCopyMemory(Name, FileNameInfor->Name.Buffer, FileNameInfor->Name.MaximumLength);
+				DbgPrint("Create file : %wz\n", Name);
+				ExFreePool(Name);
 			}
 		}
-		ObDereferenceObject(pDeviceDisk);//giai phong tham  chieu toi diskdevice
+		FltReleaseFileNameInformation(FileNameInfor);
 	}
-
-	// querry 
-	// , giai phong cau truc P_FLT_FILE_NAME_INFORMATION, giai phong vung nho da cap
 	
-	FltReleaseFileNameInformation(FileNameInfor);
 	return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 
 }
 
-FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data, 
-											PCFLT_RELATED_OBJECTS FltObjects,
-											PVOID *CompletionContex) {
+FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects,
+											PVOID *CompletionContex, FLT_POST_OPERATION_FLAGS Flags) {
 	DbgPrint("Test MiniPostCreate Callback!!\n");
 	return FLT_POSTOP_FINISHED_PROCESSING;
 
@@ -75,69 +45,58 @@ FLT_POSTOP_CALLBACK_STATUS MiniPostCreate(FLT_CALLBACK_DATA Data,
 FLT_PREOP_CALLBACK_STATUS MiniPreWrite(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS FltObjects, PVOID* CompletionContex) {
 	PFLT_FILE_NAME_INFORMATION FileNameInfor;
 	NTSTATUS status;
-	WCHAR Extension[10] = { 0 }; // try block .doc Extension;
+	WCHAR Name[100] = { 0 }; // try block .doc Extension;
 
-	status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &FileNameInfor);
-	status = FltParseFileNameInformation(FileNameInfor);
-	if (NT_SUCCESS(status)) {
-		RtlCopyMemory(Extension, FileNameInfor->Extension.Buffer, FileNameInfor->Extension.MaximumLength);// bat tat ca doc*;
-		if (wcsstr(Extension, L"doc") != NULL) {
-			DbgPrint("File name %ws bi block!\n", FileNameInfor->Name.Buffer);
-			Data->IoStatus.Status = STATUS_INVALID_PARAMETER;
-			Data->IoStatus.Information = 0; // con tro toi thong tin vung loi
+	if (FltObjects->FileObject != NULL) {
+		status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &FileNameInfor);
+		if (NT_SUCCESS(status)) {
+			status = FltParseFileNameInformation(FileNameInfor);
+			if (NT_SUCCESS(status)) {
+				RtlCopyMemory(Name, FileNameInfor->Name.Buffer, FileNameInfor->Name.MaximumLength);// bat tat ca doc*;
+				_wcsupr(Name);
+				if (wcsstr(Name, L"KHAI.TXT") != NULL) {
+					DbgPrint("File name %ws bi block!\n", Name);
+					Data->IoStatus.Status = STATUS_INVALID_PARAMETER;
+					Data->IoStatus.Information = 0; // con tro toi thong tin vung loi
+					FltReleaseFileNameInformation(FileNameInfor);
+					return FLT_PREOP_COMPLETE;
+				}
+			}
 			FltReleaseFileNameInformation(FileNameInfor);
-
-			return FLT_PREOP_COMPLETE;
 		}
 	}
-	FltReleaseFileNameInformation(FileNameInfor);
+	
 	return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
 
 NTSTATUS MiniUnload(FLT_FILTER_UNLOAD_FLAGS Flags) {
 	DbgPrint("Driver Unloaded !! \n");
-
 	return STATUS_SUCCESS;
-
 }
-const FLT_OPERATION_REGISTRATION Callbacks[] = { { IRP_MJ_CREATE,
-													0,
-													MiniPreCreate,
-													MiniPostCreate },
 
-													{ IRP_MJ_WRITE,
-													0,
-													MiniPreWrite,
-													NULL },
-													{ IRP_MJ_OPERATION_END }
-
-													};
+const FLT_OPERATION_REGISTRATION Callbacks[] = { 
+										{ IRP_MJ_CREATE, 0, MiniPreCreate, NULL },
+										{ IRP_MJ_WRITE, 0, MiniPreWrite, NULL, NULL },
+											{IRP_MJ_OPERATION_END}
+										};
 const FLT_REGISTRATION FilterRegistration = { sizeof(FLT_REGISTRATION),
 												FLT_REGISTRATION_VERSION,
-												NULL,
-												NULL,
+												0, NULL,
 												Callbacks,
 												MiniUnload,
-												NULL,
-												NULL,
-												NULL,
-												NULL,
-												NULL,
-												NULL,
-												NULL,
-												NULL };
+												NULL, NULL, NULL, NULL,
+												NULL, NULL, NULL, NULL
+												 };
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
-	NTSTATUS status = STATUS_SUCCESS;
+	NTSTATUS status;
 	status = FltRegisterFilter(DriverObject, &FilterRegistration, &MiniFilterHandle);
 	if (NT_SUCCESS(status)) {
-		FltStartFiltering(MiniFilterHandle);
+		status = FltStartFiltering(MiniFilterHandle);
 		if (!NT_SUCCESS(status)) {
 			DbgPrint(" MiniFilter canot start !!\n");
 			FltUnregisterFilter(MiniFilterHandle);
 		}
-
 	}
-
 	return status;
 }

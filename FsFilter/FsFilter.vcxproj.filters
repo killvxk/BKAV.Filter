@@ -18,11 +18,11 @@
       <Extensions>inf;inv;inx;mof;mc;</Extensions>
     </Filter>
   </ItemGroup>
- <ItemGroup>
+  <ItemGroup>
     <Inf Include="FsFilter.inf">
       <Filter>Driver Files</Filter>
     </Inf>
-  </ItemGroup>  
+  </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FsFilter.c">
       <Filter>Source Files</Filter>
@@ -32,5 +32,10 @@
     <ResourceCompile Include="FsFilter.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Queue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
